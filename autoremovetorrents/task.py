@@ -129,7 +129,6 @@ class Task(object):
                 else 'The torrent %s has been removed.',
                 delete_list[hash_]
             )
-
             if self._webhook is not None:
                 fields = [
                     {
@@ -138,13 +137,11 @@ class Task(object):
                     }
                 ]
                 self.send_webhook("Torrent Deleted Successfully", 5091684, fields)
-            
         for torrent in failed:
             self._logger.error('The torrent %s and its data cannot be removed. Reason: %s' if self._delete_data \
                 else 'The torrent %s cannot be removed. Reason: %s',
                 delete_list[torrent['hash']], torrent['reason']
             )
-
             if self._webhook is not None:
                 fields = [
                     {
