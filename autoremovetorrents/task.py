@@ -2,7 +2,6 @@
 import os
 import time
 import re
-import requests
 from . import logger
 from .client.qbittorrent import qBittorrent
 from .client.transmission import Transmission
@@ -11,6 +10,7 @@ from .client.deluge import Deluge
 from .exception.nosuchclient import NoSuchClient
 from .strategy import Strategy
 from autoremovetorrents.torrent import Torrent
+from .util.discord_webhook_handler import DiscordWebhookHandler
 
 class Task(object):
     def __init__(self, name, conf, remove_torrents = True):
@@ -38,7 +38,11 @@ class Task(object):
         self._enabled_remove = remove_torrents
         self._delete_data = conf['delete_data'] if 'delete_data' in conf else False
         self._strategies = conf['strategies'] if 'strategies' in conf else []
-        self._webhook = conf['webhook'] if 'webhook' in conf else None
+        self._webhook_url = conf['webhook'] if 'webhook' in conf else None
+
+        # Get webhook handler
+        if self._webhook_url is not None:
+            self._webhook_handler = DiscordWebhookHandler(name, self._webhook_url, self._client_name)
 
         # Torrents
         self._torrents = set()
@@ -129,31 +133,15 @@ class Task(object):
                 else 'The torrent %s has been removed.',
                 delete_list[hash_]
             )
-            if self._webhook is not None:
-                fields = [
-                    {
-                        "name": "Torrent",
-                        "value": delete_list[hash_]
-                    }
-                ]
-                self.send_webhook("Torrent Deleted Successfully", 5091684, fields)
+            if self._webhook_url is not None:
+                self._webhook_handler.send_success(delete_list[hash_])
         for torrent in failed:
             self._logger.error('The torrent %s and its data cannot be removed. Reason: %s' if self._delete_data \
                 else 'The torrent %s cannot be removed. Reason: %s',
                 delete_list[torrent['hash']], torrent['reason']
             )
-            if self._webhook is not None:
-                fields = [
-                    {
-                        "name": "Torrent",
-                        "value": delete_list[torrent['hash']]
-                    },
-                    {
-                        "name": "Reason",
-                        "value": torrent['reason']
-                    }
-                ]
-                self.send_webhook("Torrent Deletion Failed", 11619684, fields)
+            if self._webhook_url is not None:
+                self._webhook_handler.send_failure(delete_list[torrent['hash']], torrent['reason'])
 
     # Execute
     def execute(self):
@@ -171,27 +159,3 @@ class Task(object):
     # Get removed torrents (for tester)
     def get_removed_torrents(self):
         return self._remove
-
-    # Send a webhook with discord embed format
-    def send_webhook(self, title, color, fields):
-        payload = {
-            "username": "autoremove-torrents",
-            "embeds": [
-                {
-                    "author": {
-                        "name": self._client_name,
-                    },
-                    "title": title,
-                    "color": color,
-                    "fields": 
-                        fields
-                }
-            ]
-        }
-        result = requests.post(self._webhook, json=payload, headers={"Content-Type": "application/json"})
-        try:
-            result.raise_for_status()
-        except requests.exceptions.HTTPError as err:
-            print(err)
-        else:
-            print(f"Webhook delivered successfully with result {result.status_code}.")
